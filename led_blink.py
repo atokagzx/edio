@@ -1,7 +1,8 @@
-from re import M, T
+#! /usr/bin/python3
+
 import mraa
 from time import sleep, time
-### Motor ###
+
 class Motor:
     def __init__(self, pin_1, pin_2):
         self.pin_1 = mraa.Pwm(pin_1)
@@ -41,101 +42,73 @@ class Motor:
     def __del__(self):
         self.stop()
 
-# motor_a = Motor(0, 21)
-# motor_b = Motor(20, 14)
-# motor_a.go(-0.1)
-# motor_b.go(-0.1)
-# sleep(5)
+class Servo:
+    def __init__(self, pin):
+        self._pin = mraa.Pwm(pin)
+        self._pin.period_us(20000000)
+        self._pin.enable(True)
+    
+    def _map(self, x, in_min, in_max, out_min, out_max):
+        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
-# EN_PIN = mraa.Pwm(9)
-# IN1_PIN = mraa.Gpio(8)
-# IN2_PIN = mraa.Gpio(7)
-# print(dir(EN_PIN))
-# EN_PIN.period(10000) 
-# IN1_PIN.dir(mraa.DIR_OUT)
-# IN2_PIN.dir(mraa.DIR_OUT)
-# def backward(speed):
-#     EN_PIN.write(speed)
-#     IN1_PIN.write(False)
-#     IN2_PIN.write(True)
-# def forward(speed):
-#     EN_PIN.write(speed)
-#     IN1_PIN.write(True)
-#     IN2_PIN.write(False)
+    def _constraint(self, x, min, max):
+        return min if x < min else max if x > max else x
 
+    def write(self, angle: int):
+        angle = self._constraint(angle, 0, 180)
+        pw = self._map(angle, 0, 180, 700, 2300)
+        self._pin.pulsewidth_us(pw)
 
+    def writeMicroseconds(self, pw: int):
+        self._pin.pulsewidth_us(pw)
 
-# IN1_PIN.write(1)
-# IN2_PIN.write(0)
-# for i in range(50):
-#     try:
-#         x = mraa.Pwm(i)
-#         # x.dir(mraa.DIR_OUT)
-#         # x.write(0)
-#     except:
-#         print("Error: GPIO " + str(i) + " not found")
-#     else:
-#         print("GPIO " + str(i) + " found")
-# servo_pin = mraa.Pwm(3)
-# servo_pin.period_us(20000000) 
-# servo_pin.enable(True)
-# while True:
-#     for i in range(700, 2000, 1):
-#         servo_pin.pulsewidth_us(i)
-#         time.sleep(0.001)
-# gpio_1 = mraa.Gpio(32)
-# gpio_1.dir(mraa.DIR_IN)
-# while True:
-#     print(gpio_1.read())
+    def detach(self):
+        self._pin.enable(False)
 
+    def __del__(self):
+        self.detach()
 
-### Serial port example  ###
-# port = "/dev/ttyMFD1"
+class Robot:
+    INPUTS = [31, 45, 32, 46, 33, 47]
+    OUTPUTS = []
+    def __init__(self):
+        self._motor_a = Motor(0, 21)
+        self._motor_b = Motor(20, 14)
+        self._inputs = [mraa.Gpio(i) for i in self.INPUTS]
+        self._outputs = [mraa.Gpio(i) for i in self.OUTPUTS]
+        for i in self._inputs:
+            i.dir(mraa.DIR_IN)
+        for i in self._outputs:
+            i.dir(mraa.DIR_OUT)
+            i.write(0)
+        self._motor_a.go(0)
+        self._motor_b.go(0)
+    
+    def input(self):
+        return [i.read() for i in self._inputs]
+    
+    def output(self, index, value):
+        self._outputs[index].write(value)
 
-# data = 'Hello Mraa!'
+    def stop(self):
+        self._motor_a.stop()
+        self._motor_b.stop()
+    
+    def go(self, y_speed, angular_speed):
+        self._motor_a.go(y_speed + angular_speed)
+        self._motor_b.go(y_speed - angular_speed)
 
-# uart = mraa.Uart(port)
-# uart.setBaudRate(115200)
-# uart.write(bytearray(data, 'utf-8'))
-# uart.setMode(8, mraa.UART_PARITY_NONE, 1)
-# uart.setFlowcontrol(False, False)
+    def __del__(self):
+        for i in self._outputs:
+            i.write(0)
 
-# while True:
-#     if uart.dataAvailable():
-#         data_byte = uart.readStr(1)
-#         print(data_byte)
-#         if data_byte == "X":    
-#             uart.writeStr("Yes, master!")
-# from smbus2 import SMBus
-# wire = SMBus(1)
-# h = wire.read_byte_data(0x68, 0x41)
-# l = wire.read_byte_data(0x68, 0x42)
-# value = (h << 8) + l
-# if (value >= 0x8000):
-#     value = -((65535 - value) + 1)
-# print(value)
-# actual_temp = (value / 340.0) + 36.53
-# print(actual_temp)
-# b = bus.read_byte_data(80, 0)
-# wire = mraa.I2c(1, raw=True)
-# wire.address(0x68)
-# # wire.write(0x6B)
-# # wire.write(0x00)
-# sleep(0.1)
-# print(wire.read(1))
-
-### MPU6050 ###
-# from mpu6050 import mpu6050 as MPU6050
-# mpu6050 = MPU6050(0x68, bus=1)
-# print(mpu6050.get_temp())
-
-PIN1 = 31
-PIN2 = 45
-PIN3 = 32
-PIN4 = 46
-PIN5 = 33
-PIN6 = 47
-gpio_1 = mraa.Gpio(PIN5)
-gpio_1.dir(mraa.DIR_IN)
-while True:
-    print(gpio_1.read())
+if __name__ == "__main__":
+    from mpu6050 import mpu6050 as MPU6050
+    # mpu6050 = MPU6050(0x68, bus=1)
+    # print(mpu6050.get_temp())
+    robot = Robot()
+    while True:
+        robot.go(-0.2, 0)
+        sleep(1)
+        robot.go(0, 0)
+        sleep(1)
